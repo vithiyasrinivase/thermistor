@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Thermistor Temperature Display</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #eef4f9;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .container {
+      background: white;
+      padding: 20px 30px;
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    h1 {
+      color: #222;
+    }
+    .reading {
+      font-size: 2em;
+      color: #0078d7;
+      margin: 15px 0;
+    }
+    button {
+      padding: 10px 15px;
+      margin: 5px;
+      border: none;
+      border-radius: 5px;
+      background: #0078d7;
+      color: white;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #005fa3;
+    }
+    canvas {
+      margin-top: 20px;
+      max-width: 500px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Thermistor Temperature</h1>
+    <p class="reading" id="temperature">-- °C</p>
+    <button onclick="connectToSerial()">Connect to Arduino</button>
+    <button onclick="simulateData()">Simulate Data</button>
+    <canvas id="tempChart"></canvas>
+  </div>
+
+  <script>
+    const ctx = document.getElementById('tempChart').getContext('2d');
+    const tempData = {
+      labels: [],
+      datasets: [{
+        label: 'Temperature (°C)',
+        data: [],
+        borderColor: '#0078d7',
+        fill: false,
+        tension: 0.1
+      }]
+    };
+
+    const tempChart = new Chart(ctx, {
+      type: 'line',
+      data: tempData,
+      options: {
+        scales: {
+          x: { title: { display: true, text: 'Time' } },
+          y: { title: { display: true, text: 'Temperature (°C)' } }
+        }
+      }
+    });
+
+    async function connectToSerial() {
+      if (!('serial' in navigator)) {
+        alert('Web Serial API not supported in this browser. Try Chrome or Edge.');
+        return;
+      }
+
+      try {
+        const port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 9600 });
+        const decoder = new TextDecoderStream();
+        const inputDone = port.readable.pipeTo(decoder.writable);
+        const inputStream = decoder.readable;
+        const reader = inputStream.getReader();
+
+        document.getElementById('temperature').textContent = 'Reading...';
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) {
+            reader.releaseLock();
+            break;
+          }
+          if (value) {
+            updateTemperature(parseFloat(value.trim()));
+          }
+        }
+      } catch (err) {
+        alert('Error connecting to Arduino: ' + err);
+      }
+    }
+
+    function updateTemperature(temp) {
+      if (isNaN(temp)) return;
+      document.getElementById('temperature').textContent = `${temp.toFixed(2)} °C`;
+      const timeLabel = new Date().toLocaleTimeString();
+      tempData.labels.push(timeLabel);
+      tempData.datasets[0].data.push(temp);
+      if (tempData.labels.length > 20) {
+        tempData.labels.shift();
+        tempData.datasets[0].data.shift();
+      }
+      tempChart.update();
+    }
+
+    // Simulate temperature readings for testing
+    function simulateData() {
+      let temp = 30; // initial value
+      setInterval(() => {
+        temp += (Math.random() - 0.5) * 0.5; // small random changes
+        updateTemperature(temp);
+      }, 1000);
+    }
+  </script>
+</body>
+</html>
